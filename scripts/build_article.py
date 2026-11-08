@@ -163,7 +163,7 @@ def build_docx(output: Path, pages: list[Path], title: str, intro: str, resource
         set_font(run, size, bold, color)
     blank()  # 组件下方空行
     p = doc.add_paragraph()
-    p.paragraph_format.first_line_indent = Inches(0.24)
+    p.paragraph_format.first_line_indent = Pt(22)  # Two 11-point Chinese characters.
     set_font(p.add_run(intro))
     set_font(p.add_run(resource_line), bold=True, color=(12, 59, 112))
     set_font(p.add_run("下面按照上课顺序完整展示课件。"))
@@ -195,6 +195,9 @@ def build(args) -> Path:
         validate_image(path)
     if args.cover:
         validate_image(args.cover)
+        with Image.open(args.cover) as cover:
+            if not 2.30 <= cover.width / cover.height <= 2.40:
+                raise ValueError("自备封面须接近 2.35:1；请调整后重新运行")
     with TemporaryDirectory() as tmp:
         pdf = select_source(source, args.pdf.resolve() if args.pdf else None, Path(tmp))
         with pymupdf.open(pdf) as checked:
