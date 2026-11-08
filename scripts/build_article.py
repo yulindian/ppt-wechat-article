@@ -96,7 +96,9 @@ def render_pages(pdf: Path, pages_dir: Path) -> tuple[list[Path], Image.Image]:
     return page_paths, first
 
 
-def make_cover(first: Image.Image, output: Path, selected: Path | None) -> None:
+def make_cover(first: Image.Image, output: Path, selected: Path | None, focus_y: float = 0.0) -> None:
+    if not 0 <= focus_y <= 1:
+        raise ValueError("封面垂直裁切位置须在 0 到 1 之间")
     if selected:
         validate_image(selected)
         with Image.open(selected) as image:
@@ -104,8 +106,11 @@ def make_cover(first: Image.Image, output: Path, selected: Path | None) -> None:
         ratio = cover.width / cover.height
         if not 2.30 <= ratio <= 2.40:
             raise ValueError(f"自备封面须接近 2.35:1；当前为 {ratio:.3f}:1")
+        cover = ImageOps.fit(cover, (1880, 800), method=Image.Resampling.LANCZOS)
     else:
-        cover = ImageOps.fit(first, (1920, 817), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+        # Fill the landscape canvas. Never shrink the slide into a padded square-safe box.
+        # Courseware titles are usually near the top; manual review remains required.
+        cover = ImageOps.fit(first.convert("RGB"), (1880, 800), method=Image.Resampling.LANCZOS, centering=(0.5, focus_y))
     cover.save(output, optimize=True)
     center = (cover.width - min(cover.width, cover.height)) // 2
     cover.crop((center, 0, center + cover.height, cover.height)).save(output.with_name("封面方形裁切检查.png"))
@@ -209,7 +214,7 @@ def build(args) -> Path:
             # Normalize JPEG/other supported images to the declared PNG format.
             with Image.open(path) as banner:
                 banner.convert("RGB").save(output / name)
-        make_cover(first, output / "公众号封面图.png", args.cover)
+        make_cover(first, output / "公众号封面图.png", args.cover, getattr(args, "cover_focus_y", 0.0))
     resource_line = "配套" + "＋".join(item["label"] for item in metadata["resources"]) + "，"
     build_docx(output, pages, metadata["title"], metadata["intro"], resource_line)
     (output / "公众号标题.txt").write_text(metadata["title"] + "\n", encoding="utf-8")
@@ -234,13 +239,14 @@ def build(args) -> Path:
         "推荐：在公众号后台通过文档导入上传 DOCX，随后填写正式标题、摘要和封面，保存并重新打开检查。\n"
         "Obsidian：整个文件夹放入自己的库，打开文章正文.md；Markdown 用于编辑存储，固定排版以 DOCX 导入稿为准。\n"
         "一键复制为 Windows 辅助入口，嵌入图片可能被后台过滤，不能代替保存后检查。\n"
-        "开头图下方和结尾图上方留给公众号名片。封面方形裁切检查.png 只用于验收。\n",
+        "开头图下方和结尾图上方留给公众号名片。封面为1880×800、2.35:1铺满横图。\n"
+        "封面方形裁切检查.png 仅供预检查；方形裁切不通过时在后台单独调整，不缩小横版主体补大留白。\n",
         encoding="utf-8",
     )
     (output / "生成检查.txt").write_text(
         f"来源文件夹：{source.name}\nPDF页数：{len(pages)}\n"
         f"连续页图：{pages[0].name} 至 {pages[-1].name}\n正文图片应为：{len(pages)+2} 张\n"
-        "待人工检查：导语依据、封面标题和方形裁切、真实公众号草稿粘贴及手机预览。\n",
+        "待人工检查：导语依据、2.35:1封面铺满且标题完整、后台单独调整方形裁切、真实公众号草稿及手机预览。\n",
         encoding="utf-8",
     )
     return output
@@ -253,6 +259,7 @@ if __name__ == "__main__":
     parser.add_argument("--output", type=Path, required=True, help="新的或空的交付文件夹")
     parser.add_argument("--pdf", type=Path, help="存在多个 PDF 时明确指定最终版")
     parser.add_argument("--cover", type=Path, help="已重排并审核的 2.35:1 封面；默认裁取第一页")
+    parser.add_argument("--cover-focus-y", type=float, default=0.0, help="默认靠上裁切保护标题；0靠上、0.5居中、1靠下，须目视复核")
     parser.add_argument("--opening-image", type=Path, help="自选开头引导图；默认 assets/opening.png 示例占位图")
     parser.add_argument("--closing-image", type=Path, help="自选结尾引导图；默认 assets/closing.png 示例占位图")
     arguments = parser.parse_args()

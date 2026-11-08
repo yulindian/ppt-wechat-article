@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import unittest
 
 from docx import Document
-from PIL import Image
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("build_article", ROOT / "scripts/build_article.py")
@@ -15,6 +15,24 @@ spec.loader.exec_module(builder)
 
 
 class ArticleTests(unittest.TestCase):
+    def test_cover_fills_canvas_and_keeps_top_title(self):
+        source = Image.new("RGB", (1600, 900), "blue")
+        ImageDraw.Draw(source).rectangle((100,40,1400,100), fill="red")
+        with TemporaryDirectory() as temp:
+            output=Path(temp)/"cover.png"
+            builder.make_cover(source,output,None)
+            with Image.open(output) as image:
+                self.assertEqual(image.size,(1880,800))
+                self.assertEqual(image.getpixel((500,70)),(255,0,0))
+                self.assertEqual(image.getpixel((5,400)),(0,0,255))
+
+    def test_supplied_cover_normalized_to_exact_ratio(self):
+        with TemporaryDirectory() as temp:
+            selected=Path(temp)/"selected.png"; output=Path(temp)/"cover.png"
+            Image.new("RGB",(1920,817),"green").save(selected)
+            builder.make_cover(Image.new("RGB",(10,10)),output,selected)
+            with Image.open(output) as image: self.assertEqual(image.size,(1880,800))
+
     def args(self, root, **changes):
         values = dict(source=ROOT / "examples/source", metadata=ROOT / "examples/metadata.json",
                       output=root / "result", pdf=None, cover=None, opening_image=None, closing_image=None)
